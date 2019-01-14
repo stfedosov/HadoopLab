@@ -1,10 +1,14 @@
-import com.opencsv.CSVReader;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDF;
 import org.apache.hadoop.io.Text;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,22 +23,20 @@ import java.util.Map;
 )
 public class GetCountryByIP extends UDF {
 
-    private static final String GEONAME_TO_COUNTRY = "geonametocountry.csv";
-    private static final String IP_TO_GEONAME = "iptogeoname.csv";
+    private static final String GEONAME_TO_COUNTRY = "src/main/resources/geonametocountry.csv";
+    private static final String IP_TO_GEONAME = "src/main/resources/iptogeoname.csv";
     private static final String DOT = "\\.";
     private static final String SLASH = "\\/";
     private static final List<Node> nodesList = new ArrayList<>();
-    private static final char COMMA_SEPARATOR = ',';
-    private static Map<Integer, String> geonameToCountry = new HashMap<>();
+    private static final Map<Integer, String> geonameToCountry = new HashMap<>();
     private Text EMPTY = new Text("empty");
 
     private static void fillMap(Map<Integer, String> map, String source) {
-        try (CSVReader reader =
-                     new CSVReader(new InputStreamReader(GetCountryByIP.class.getResourceAsStream(source)), ',')) {
-            String[] record;
-            while ((record = reader.readNext()) != null) {
-                if (!record[0].isEmpty()) {
-                    map.put(Integer.valueOf(record[0]), record[5]);
+        try (Reader reader = Files.newBufferedReader(Paths.get(source));
+             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT)) {
+            for (CSVRecord csvRecord : csvParser) {
+                if (!csvRecord.get(0).isEmpty()) {
+                    map.put(Integer.valueOf(csvRecord.get(0)), csvRecord.get(5));
                 }
             }
         } catch (IOException e) {
@@ -42,28 +44,29 @@ public class GetCountryByIP extends UDF {
         }
     }
 
-    private static void readData(List<Node> list) {
-        try (CSVReader reader =
-                     new CSVReader(new InputStreamReader(GetCountryByIP.class.getResourceAsStream(IP_TO_GEONAME)), COMMA_SEPARATOR)) {
-            String[] record;
+    private static void readData() {
+        try (Reader reader = Files.newBufferedReader(Paths.get(IP_TO_GEONAME));
+             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withRecordSeparator("\t\n"))) {
             int prev = 0;
             Node prevNode = null;
-            while ((record = reader.readNext()) != null) {
-                String[] splitBySlash = record[0].split(SLASH);
+            for (CSVRecord csvRecord : csvParser) {
+                if (csvRecord.get(1).isEmpty() && csvRecord.get(2).isEmpty()) continue;
+                String[] splitBySlash = csvRecord.get(0).split(SLASH);
                 String[] split = splitBySlash[0].split(DOT);
-                int key = Integer.parseInt(split[0]);
-                if (record[1].isEmpty() && record[2].isEmpty()) continue;
-                int geoname = Integer.parseInt(record[1].isEmpty() ? record[2] : record[1]);
+                int key = Integer.valueOf(split[0]);
+                int geoname = Integer.valueOf(csvRecord.get(1).isEmpty() ? csvRecord.get(2) : csvRecord.get(1));
                 int netmask = Integer.valueOf(splitBySlash[1]);
                 if (prev != key) {
                     prev = key;
-                    if (prevNode != null) list.add(prevNode.getChildren().get(0));
+                    if (prevNode != null) nodesList.add(prevNode.getChildren().get(0));
                     prevNode = null;
                 }
                 if (prevNode == null) prevNode = new Node(-1, -1); //fake node
-                Node.addChildren(prevNode, split, 0, netmask, geoname);
+                prevNode.addChildren(split, 0, netmask, geoname);
             }
-            if (prevNode != null) list.add(prevNode.getChildren().get(0));
+            if (prevNode != null) {
+                nodesList.add(prevNode.getChildren().get(0));
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -71,7 +74,7 @@ public class GetCountryByIP extends UDF {
 
     public Text evaluate(Text ip) throws SQLException {
         if (nodesList.isEmpty()) {
-            readData(nodesList);
+            readData();
         }
         if (geonameToCountry.isEmpty()) {
             fillMap(geonameToCountry, GEONAME_TO_COUNTRY);
@@ -82,19 +85,23 @@ public class GetCountryByIP extends UDF {
         return result == null ? EMPTY : new Text(result);
     }
 
-    private static Integer findGeoName(List<Node> nodesList, Node prev, String[] ip, int index) {
-        if (index == ip.length) return prev.getGeoname();
-        Integer current = Integer.parseInt(ip[index]);
+    private static int findGeoName(List<Node> nodesList, Node prev, String[] ip, int index) {
+        if (index == ip.length) return prev.geoname;
+        int current = Integer.valueOf(ip[index]);
         int start = 0;
         int end = nodesList.size() - 1;
         while (start <= end) {
             int mid = start + (end - start) / 2;
             Node midNode = nodesList.get(mid);
-            int min = midNode.getMin();
-            int max = midNode.getMax();
-            if (min <= current && max >= current) return findGeoName(midNode.getChildren(), midNode, ip, index + 1);
-            else if (min > current) end = mid - 1;
-            else start = mid + 1;
+            int min = midNode.min;
+            int max = midNode.max;
+            if (min <= current && max >= current) {
+                return findGeoName(midNode.getChildren(), midNode, ip, index + 1);
+            } else if (min > current) {
+                end = mid - 1;
+            } else {
+                start = mid + 1;
+            }
         }
         return -1;
     }
