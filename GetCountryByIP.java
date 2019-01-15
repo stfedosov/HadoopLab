@@ -42,14 +42,7 @@ public class GetCountryByIP extends UDF {
             throw new RuntimeException(e);
         }
     }
-
-    public static void main(String[] args) {
-        readData();
-        fillMap(geonameToCountry, GEONAME_TO_COUNTRY);
-        System.out.println(findGeoName(ipToLong("1.102.213.228".split(DOT))));
-        System.out.println(findGeoName(ipToLong("1.103.222.213".split(DOT))));
-    }
-
+        
     private static void readData() {
         try (CSVReader reader =
                      new CSVReader(
