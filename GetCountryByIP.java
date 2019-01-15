@@ -1,42 +1,21 @@
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
-import org.apache.hadoop.hive.ql.exec.Description;
-import org.apache.hadoop.hive.ql.exec.UDF;
-import org.apache.hadoop.io.Text;
-
-import java.io.IOException;
-import java.io.Reader;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-/**
- * @author sfedosov on 12/19/18.
- */
-@Description(
-        name = "getcountry"
-)
 public class GetCountryByIP extends UDF {
 
-    private static final String GEONAME_TO_COUNTRY = "src/main/resources/geonametocountry.csv";
-    private static final String IP_TO_GEONAME = "src/main/resources/iptogeoname.csv";
+    private static final String GEONAME_TO_COUNTRY = "geonametocountry.csv";
+    private static final String IP_TO_GEONAME = "iptogeoname.csv";
     private static final String DOT = "\\.";
     private static final String SLASH = "\\/";
     private static final List<Node> nodesList = new ArrayList<>();
-    private static final Map<Integer, String> geonameToCountry = new HashMap<>();
+    private static final char COMMA_SEPARATOR = ',';
+    private static Map<Integer, String> geonameToCountry = new HashMap<>();
     private Text EMPTY = new Text("empty");
 
     private static void fillMap(Map<Integer, String> map, String source) {
-        try (Reader reader = Files.newBufferedReader(Paths.get(source));
-             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT)) {
-            for (CSVRecord csvRecord : csvParser) {
-                if (!csvRecord.get(0).isEmpty()) {
-                    map.put(Integer.valueOf(csvRecord.get(0)), csvRecord.get(5));
+        try (CSVReader reader =
+                     new CSVReader(new InputStreamReader(GetCountryByIP.class.getResourceAsStream(source)), ',')) {
+            String[] record;
+            while ((record = reader.readNext()) != null) {
+                if (!record[0].isEmpty()) {
+                    map.put(Integer.valueOf(record[0]), record[5]);
                 }
             }
         } catch (IOException e) {
@@ -45,16 +24,17 @@ public class GetCountryByIP extends UDF {
     }
 
     private static void readData() {
-        try (Reader reader = Files.newBufferedReader(Paths.get(IP_TO_GEONAME));
-             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withRecordSeparator("\t\n"))) {
+        try (CSVReader reader =
+                     new CSVReader(new InputStreamReader(GetCountryByIP.class.getResourceAsStream(IP_TO_GEONAME)), COMMA_SEPARATOR)) {
+            String[] record;
             int prev = 0;
             Node prevNode = null;
-            for (CSVRecord csvRecord : csvParser) {
-                if (csvRecord.get(1).isEmpty() && csvRecord.get(2).isEmpty()) continue;
-                String[] splitBySlash = csvRecord.get(0).split(SLASH);
+            while ((record = reader.readNext()) != null) {
+                if (record[1].isEmpty() && record[2].isEmpty()) continue;
+                String[] splitBySlash = record[0].split(SLASH);
                 String[] split = splitBySlash[0].split(DOT);
                 int key = Integer.valueOf(split[0]);
-                int geoname = Integer.valueOf(csvRecord.get(1).isEmpty() ? csvRecord.get(2) : csvRecord.get(1));
+                int geoname = Integer.valueOf(record[1].isEmpty() ? record[2] : record[1]);
                 int netmask = Integer.valueOf(splitBySlash[1]);
                 if (prev != key) {
                     prev = key;
