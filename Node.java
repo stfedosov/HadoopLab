@@ -5,9 +5,9 @@ import java.util.List;
  * @author sfedosov on 12/27/18.
  */
 public class Node {
-    private final int min;
-    private final int max;
-    private int geoname = -1;
+    final int min;
+    final int max;
+    int geoname = -1;
     private final List<Node> children = new ArrayList<>();
 
     Node(int min, int max) {
@@ -15,15 +15,15 @@ public class Node {
         this.max = max;
     }
 
-    public static void addChildren(Node prevNode, String[] split, int index, int netmask, int geoname) {
+    public void addChildren(String[] split, int index, int netmask, int geoname) {
         if (index == split.length) {
-            prevNode.setGeoname(geoname);
+            this.geoname = geoname;
             return;
         }
-        int min = Integer.parseInt(split[index]);
-        for (Node node : prevNode.getChildren()) {
-            if (node.getMin() == min) {
-                addChildren(node, split, index + 1, netmask - 8, geoname);
+        int min = Integer.valueOf(split[index]);
+        for (Node node : this.getChildren()) {
+            if (node.min == min) {
+                node.addChildren(split, index + 1, netmask - 8, geoname);
                 return;
             }
         }
@@ -36,25 +36,9 @@ public class Node {
         } else if (netmask < 8) {
             max = min + (1 << 8 - netmask) - 1;
         }
-        Node toAdd = new Node(min, max);
-        prevNode.addChild(toAdd);
-        addChildren(toAdd, split, index + 1, netmask - 8, geoname);
-    }
-
-    int getGeoname() {
-        return geoname;
-    }
-
-    int getMax() {
-        return max;
-    }
-
-    void setGeoname(int geoname) {
-        this.geoname = geoname;
-    }
-
-    int getMin() {
-        return min;
+        Node newNode = new Node(min, max);
+        this.addChild(newNode);
+        newNode.addChildren(split, index + 1, netmask - 8, geoname);
     }
 
     void addChild(Node toAdd) {
