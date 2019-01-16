@@ -18,6 +18,7 @@ object MainSparkLoader {
     val conf = new SparkConf().setAppName("MyApp").setMaster("local").setJars(Array("/var/lib/hive/standalone.jar"))
     val sc = new SparkContext(conf)
     val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
 
     val df = sqlContext.read
       .format("com.databricks.spark.csv")
@@ -29,7 +30,6 @@ object MainSparkLoader {
     df.registerTempTable("product_purchase")
 
     if (isEmptyOrEqualTo(args, MOST_SPEND_COUNT)) {
-      val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
       hiveContext.sql("ADD JAR /var/lib/hive/standalone.jar")
       hiveContext.sql("CREATE TEMPORARY FUNCTION getcountry AS 'GetCountryByIP'")
       val top10Countries = hiveContext.sql("SELECT getcountry(ip), SUM (price) as s FROM product_purchase GROUP BY getcountry(ip) SORT BY s desc limit 10")
@@ -44,7 +44,6 @@ object MainSparkLoader {
     }
 
     if (isEmptyOrEqualTo(args, MOST_FREQ_PROD)) {
-      val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
       val top10products = hiveContext.sql("SELECT category, product, freq FROM (" +
         "SELECT category, product, COUNT(*) AS freq, ROW_NUMBER() OVER (" +
         "PARTITION BY category ORDER BY COUNT(*) DESC) as seqnum " +
