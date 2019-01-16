@@ -23,7 +23,7 @@ object MainSparkLoader {
     val df = sqlContext.read
       .format("com.databricks.spark.csv")
       .option("header", "false")
-      .schema(getSchemaDefinition1)
+      .schema(getSchemaDefinition)
       .load("/user/cloudera/flume/events/*/*/*")
       .cache()
 
@@ -70,7 +70,7 @@ object MainSparkLoader {
       .jdbc("jdbc:mysql://localhost:3306/mysql", table, props)
   }
 
-  private def getSchemaDefinition1 = {
+  private def getSchemaDefinition = {
     StructType(List(
       StructField("product", StringType, nullable = false),
       StructField("price", DoubleType, nullable = false),
