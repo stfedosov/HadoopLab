@@ -57,7 +57,7 @@ object MainSparkLoader {
       val top10ProductsInEachCategory = categoriesProductsAndFreqs
         .withColumn("seqNum", row_number().over(window.orderBy(col("freq").desc))).where(col("seqNum") <= 10)
         .drop("seqNum")
-      loadIntoDB(top10ProductsInEachCategory, MOST_FREQ_CAT)
+      loadIntoDB(top10ProductsInEachCategory, MOST_FREQ_PROD)
       top10ProductsInEachCategory.show()
     }
 
