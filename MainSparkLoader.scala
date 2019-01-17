@@ -1,7 +1,9 @@
 import java.util.Properties
 
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, SaveMode}
+import org.apache.spark.sql.functions._
 import org.apache.spark.{SparkConf, SparkContext}
 
 /**
@@ -17,17 +19,15 @@ object MainSparkLoader {
 
     val conf = new SparkConf().setAppName("MyApp").setMaster("local").setJars(Array("/var/lib/hive/standalone.jar"))
     val sc = new SparkContext(conf)
-    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
     val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
 
-    val df = sqlContext.read
+    val df = hiveContext.read
       .format("com.databricks.spark.csv")
       .option("header", "false")
       .schema(getSchemaDefinition)
       .load("/user/cloudera/flume/events/*/*/*")
+      .toDF()
       .cache()
-
-    df.registerTempTable("product_purchase")
 
     if (isEmptyOrEqualTo(args, MOST_SPEND_COUNT)) {
       hiveContext.sql("ADD JAR /var/lib/hive/standalone.jar")
@@ -38,18 +38,27 @@ object MainSparkLoader {
     }
 
     if (isEmptyOrEqualTo(args, MOST_FREQ_CAT)) {
-      val top10categories = sqlContext.sql("SELECT category, COUNT(*) as c FROM product_purchase GROUP BY category SORT BY c DESC LIMIT 10").toDF()
-      loadIntoDB(top10categories, MOST_FREQ_CAT)
-      top10categories.show()
+      val frame = df
+        .select("category")
+        .groupBy("category")
+        .agg(count("*").as("cnt"))
+      val top10PopularCategories = frame
+        .sort(col("cnt").desc)
+        .limit(10)
+      loadIntoDB(top10PopularCategories, MOST_FREQ_CAT)
+      top10PopularCategories.show()
     }
 
     if (isEmptyOrEqualTo(args, MOST_FREQ_PROD)) {
-      val top10products = hiveContext.sql("SELECT category, product, freq FROM (" +
-        "SELECT category, product, COUNT(*) AS freq, ROW_NUMBER() OVER (" +
-        "PARTITION BY category ORDER BY COUNT(*) DESC) as seqnum " +
-        "FROM product_purchase GROUP BY category, product) ci WHERE seqnum = 1 LIMIT 10")
-      loadIntoDB(top10products, MOST_FREQ_PROD)
-      top10products.show()
+      val window = Window.partitionBy("category")
+      val categoriesProductsAndFreqs = df.select("category", "product")
+        .groupBy("category", "product")
+        .agg(count("*").as("freq"))
+      val top10ProductsInEachCategory = categoriesProductsAndFreqs
+        .withColumn("seqNum", row_number().over(window.orderBy(col("freq").desc))).where(col("seqNum") <= 10)
+        .drop("seqNum")
+      loadIntoDB(top10ProductsInEachCategory, MOST_FREQ_CAT)
+      top10ProductsInEachCategory.show()
     }
 
     sc.stop()
@@ -79,4 +88,3 @@ object MainSparkLoader {
       StructField("ip", StringType, nullable = false)))
   }
 }
-
