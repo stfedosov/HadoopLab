@@ -17,7 +17,7 @@ import java.util.Map;
 @Description(
         name = "getcountry"
 )
-public class GetCountryByIP extends UDF {
+public class GetCountryByIP extends UDF implements scala.Serializable {
 
     private static final String GEONAME_TO_COUNTRY = "geonametocountry.csv";
     private static final String IP_TO_GEONAME = "iptogeoname.csv";
@@ -25,7 +25,6 @@ public class GetCountryByIP extends UDF {
     private static final String SLASH = "\\/";
     private static final List<long[]> nodesList = new ArrayList<>(305376);
     private static Map<Integer, String> geonameToCountry = new HashMap<>(252);
-    private Text EMPTY = new Text("empty");
 
     private static void fillMap(Map<Integer, String> map, String source) {
         try (CSVReader reader =
@@ -42,7 +41,11 @@ public class GetCountryByIP extends UDF {
             throw new RuntimeException(e);
         }
     }
-        
+
+    public static void main(String[] args) {
+
+    }
+
     private static void readData() {
         try (CSVReader reader =
                      new CSVReader(
@@ -73,9 +76,9 @@ public class GetCountryByIP extends UDF {
         if (nodesList.isEmpty()) readData();
         if (geonameToCountry.isEmpty()) fillMap(geonameToCountry, GEONAME_TO_COUNTRY);
         final String ipStr;
-        if (ip == null || (ipStr = ip.toString().trim()).isEmpty()) return EMPTY;
+        if (ip == null || (ipStr = ip.toString().trim()).isEmpty()) return new Text("empty");
         final String result = geonameToCountry.get(findGeoName(ipToLong(ipStr.split(DOT))));
-        return result == null ? EMPTY : new Text(result);
+        return result == null ? new Text("empty") : new Text(result);
     }
 
     private static int findGeoName(long toSearch) {
