@@ -5,6 +5,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
 import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.hadoop.io
+import org.apache.spark.sql.api.java.UDF1
 
 /**
   * @author sfedosov on 12/24/18.
@@ -17,9 +19,17 @@ object MainSparkLoader {
 
   def main(args: Array[String]): Unit = {
 
-    val conf = new SparkConf().setAppName("MyApp").setMaster("local").setJars(Array("/var/lib/hive/standalone.jar"))
+    val conf = new SparkConf().setAppName("MyApp").setMaster("local")
     val sc = new SparkContext(conf)
+    val p = new GetCountryByIP()
+
     val hiveContext = new org.apache.spark.sql.hive.HiveContext(sc)
+
+    hiveContext.udf.register("getcountry", new UDF1[String, String] {
+      override def call(t1: String): String = {
+        p.evaluate(new io.Text(t1)).toString
+      }
+    }, DataTypes.StringType)
 
     val df = hiveContext.read
       .format("com.databricks.spark.csv")
@@ -30,11 +40,14 @@ object MainSparkLoader {
       .cache()
 
     if (isEmptyOrEqualTo(args, MOST_SPEND_COUNT)) {
-      hiveContext.sql("ADD JAR /var/lib/hive/standalone.jar")
-      hiveContext.sql("CREATE TEMPORARY FUNCTION getcountry AS 'GetCountryByIP'")
-      val top10Countries = hiveContext.sql("SELECT getcountry(ip), SUM (price) as s FROM product_purchase GROUP BY getcountry(ip) SORT BY s desc limit 10")
-      top10Countries.show()
-      loadIntoDB(top10Countries, MOST_SPEND_COUNT)
+      val top10SpendingCountries = df
+        .select(callUDF("getcountry", col("ip")).as("country"), col("price"))
+        .groupBy("country")
+        .agg(sum(col("price"))).as("sum")
+        .sort(col("sum(price)").desc)
+        .limit(10)
+      top10SpendingCountries.show()
+      loadIntoDB(top10SpendingCountries, MOST_SPEND_COUNT)
     }
 
     if (isEmptyOrEqualTo(args, MOST_FREQ_CAT)) {
