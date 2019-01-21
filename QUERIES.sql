@@ -1,6 +1,6 @@
 /* top 10 popular categories */
 
-SELECT category, count(*) as t FROM product_purchase GROUP BY category SORT BY t DESC LIMIT 10;
+SELECT category, count(*) as t FROM product_purchase GROUP BY category ORDER BY t DESC LIMIT 10;
 
 /* top 10 popular products for each category */
 
@@ -11,4 +11,4 @@ WHERE seqnum <= 10;
 
 /*  top 10 countries with the highest money spending */
 
-SELECT getcountry(ip), SUM (price) as s FROM product_purchase GROUP BY getcountry(ip) SORT BY s desc limit 10;
+SELECT getcountry(ip), SUM (price) as s FROM product_purchase GROUP BY getcountry(ip) ORDER BY s desc limit 10;
