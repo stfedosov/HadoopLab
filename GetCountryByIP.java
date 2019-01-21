@@ -87,7 +87,7 @@ public class GetCountryByIP extends UDF implements scala.Serializable {
         while (start <= end) {
             int mid = start + (end - start) / 2;
             long[] midNode = nodesList.get(mid);
-            if (midNode[0] <= toSearch && midNode[1] >= toSearch) {
+            if (midNode[0] <= toSearch && midNode[1] > toSearch) {
                 return (int) midNode[2];
             } else if (midNode[0] > toSearch) {
                 end = mid - 1;
