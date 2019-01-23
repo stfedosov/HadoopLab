@@ -43,11 +43,10 @@ object MainSparkLoader {
       val top10SpendingCountries = df
         .select(callUDF("getcountry", col("ip")).as("country"), col("price"))
         .groupBy("country")
-        .agg(sum(col("price"))).as("sum")
-        .sort(col("sum(price)").desc)
-        .limit(10)
-      top10SpendingCountries.show()
-      loadIntoDB(top10SpendingCountries, MOST_SPEND_COUNT)
+        .agg(sum("price").as("value"))
+      val result = top10SpendingCountries.orderBy(col("value").desc).limit(10)
+      result.show()
+      loadIntoDB(result, MOST_SPEND_COUNT)
     }
 
     if (isEmptyOrEqualTo(args, MOST_FREQ_CAT)) {
