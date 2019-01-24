@@ -8,23 +8,6 @@ Hive:
 hive server restart: sudo service hive-server2 restart
 -------------------------------------------------------
 
-CREATE EXTERNAL TABLE IF NOT EXISTS product_purchase(product STRING, price DOUBLE, pdate TIMESTAMP, category STRING, ip STRING) PARTITIONED BY (dateval STRING) ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' WITH SERDEPROPERTIES ( "separatorChar" = "," ) LOCATION '/user/cloudera/flume/events' 
-
-
-alter table product_purchase add partition (dateval = '2018-8-1') location '/user/cloudera/flume/events/2018/8/1';
-alter table product_purchase add partition (dateval = '2018-8-2') 
-location '/user/cloudera/flume/events/2018/8/2';
-alter table product_purchase add partition (dateval = '2018-8-3') 
-location '/user/cloudera/flume/events/2018/8/3';
-alter table product_purchase add partition (dateval = '2018-8-4') 
-location '/user/cloudera/flume/events/2018/8/4';
-alter table product_purchase add partition (dateval = '2018-8-5') 
-location '/user/cloudera/flume/events/2018/8/5';
-alter table product_purchase add partition (dateval = '2018-8-6') 
-location '/user/cloudera/flume/events/2018/8/6';
-alter table product_purchase add partition (dateval = '2018-8-7') 
-location '/user/cloudera/flume/events/2018/8/7';
-
 select dateval, count(*) from product_purchase group by dateval;
 
 SELECT category, count(*) as t FROM product_purchase GROUP BY category SORT BY t DESC LIMIT 10;
