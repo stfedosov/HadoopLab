@@ -1,0 +1,88 @@
+docker run --hostname=quickstart.cloudera --privileged=true -t -i -p 7180:7180 -p 8888:8888 6a6b0ef21b85 /usr/bin/docker-quickstart
+
+sudo /home/cloudera/cloudera-manager --express --force
+
+-------------------------------------------------------
+Hive:
+-------------------------------------------------------
+hive server restart: sudo service hive-server2 restart
+-------------------------------------------------------
+
+CREATE EXTERNAL TABLE IF NOT EXISTS product_purchase(product STRING, price DOUBLE, pdate TIMESTAMP, category STRING, ip STRING) PARTITIONED BY (dateval STRING) ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' WITH SERDEPROPERTIES ( "separatorChar" = "," ) LOCATION '/user/cloudera/flume/events' 
+
+
+alter table product_purchase add partition (dateval = '2018-8-1') location '/user/cloudera/flume/events/2018/8/1';
+alter table product_purchase add partition (dateval = '2018-8-2') 
+location '/user/cloudera/flume/events/2018/8/2';
+alter table product_purchase add partition (dateval = '2018-8-3') 
+location '/user/cloudera/flume/events/2018/8/3';
+alter table product_purchase add partition (dateval = '2018-8-4') 
+location '/user/cloudera/flume/events/2018/8/4';
+alter table product_purchase add partition (dateval = '2018-8-5') 
+location '/user/cloudera/flume/events/2018/8/5';
+alter table product_purchase add partition (dateval = '2018-8-6') 
+location '/user/cloudera/flume/events/2018/8/6';
+alter table product_purchase add partition (dateval = '2018-8-7') 
+location '/user/cloudera/flume/events/2018/8/7';
+
+select dateval, count(*) from product_purchase group by dateval;
+
+SELECT category, count(*) as t FROM product_purchase GROUP BY category SORT BY t DESC LIMIT 10;
+
+INSERT OVERWRITE DIRECTORY  '/user/cloudera/hive/warehouse' row format delimited fields terminated by ',' SELECT category, count(*) as t FROM product_purchase GROUP BY category order BY t DESC LIMIT 10;
+
+SELECT category, product, freq FROM (SELECT category, product, COUNT(*) AS freq, ROW_NUMBER() OVER (PARTITION BY category ORDER BY COUNT(*) DESC) as seqnum FROM product_purchase GROUP BY category, product) ci WHERE seqnum = 1 LIMIT 10;
+SELECT getcountry(ip), total FROM (SELECT ip, SUM(price) as total FROM product_purchase GROUP BY ip) ci LIMIT 10;
+-----------------------------------------------------
+docker cp /Users/sfedosov/Downloads/GeoLite2-Country-CSV_20181218/GeoLite2-Country-Blocks-IPv4.csv 5127c1ca73cc:/var/lib/hive/ipv4togeoname.csv
+docker cp /Users/sfedosov/Downloads/GeoLite2-Country-CSV_20181218/GeoLite2-Country-Locations-en.csv 5127c1ca73cc:/var/lib/hive/geonametocountry.csv
+
+hadoop fs -mkdir /user/cloudera/hive
+
+hadoop fs -chmod 777 /user/cloudera/hive
+
+hadoop fs -put /var/lib/hive/ipv4togeoname.csv /user/cloudera/hive
+hadoop fs -put /var/lib/hive/geonametocountry.csv /user/cloudera/hive
+
+create table country_blocks_ipv4(
+   ip STRING,  geoname INT,  
+   registered_country_geoname_id INT, 
+   represented_country_geoname_id INT, 
+   is_anonymous_proxy INT, is_satellite_provider INT) 
+row format delimited fields terminated by ','; 
+
+create table country_locations(
+   geoname INT, 
+   locale_code STRING,
+   continent_code STRING,
+   continent_name STRING,
+   country_iso_code STRING,
+   country_name STRING,
+   is_in_european_union INT) 
+row format delimited fields terminated by ',';
+
+load data inpath '/user/cloudera/hive/ipv4togeoname.csv' into table country_blocks_ipv4;
+load data inpath '/user/cloudera/hive/geonametocountry.csv' into table country_locations;
+
+------------------------------------------------------
+
+add jar /var/lib/hive/standalone.jar;
+CREATE TEMPORARY FUNCTION getcountry AS 'GetCountryByIP';
+
+SELECT getcountry(ip), total FROM (SELECT ip, SUM(price) as total FROM product_purchase GROUP BY ip) ci LIMIT 10;
+
+INSERT OVERWRITE DIRECTORY  '/user/hive/warehouse' row format delimited fields terminated by ',' SELECT getcountry(ip), SUM (price) as s FROM product_purchase GROUP BY ip SORT BY s desc limit 10;
+
+sudo mysql -uroot -pcloudera
+use mysql;
+create table most_spending_countries (name varchar(50), total double);
+create table most_frequent_products (name varchar(50), total integer);
+create table most_frequent_categories (name varchar(50), total integer);
+
+sqoop export --connect jdbc:mysql://localhost:3306/mysql --username=root --password=cloudera --table most_spending_countries --m 1  --export-dir=/user/hive/warehouse/000000_0 --input-fields-terminated-by ','
+
+sqoop export --connect jdbc:mysql://10.0.0.21:3306/mysql?useSSL=false --table most_frequent_categories --export-dir=/user/sfedosov/warehouse/000000_0;
+
+/usr/bin/flume-ng agent -c /home/sfedosov -f /home/sfedosov/flume.conf -n tier1 --classpath /home/sfedosov/plugins.d/interceptor/lib/standalone.jar
+
+spark-submit --class MainSparkLoader --driver-class-path mysql-connector-java-5.1.44.jar standalone-for-spark.jar
